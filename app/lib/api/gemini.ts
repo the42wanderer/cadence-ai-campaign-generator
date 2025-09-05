@@ -64,40 +64,66 @@ class GeminiAPI {
       } catch (error: any) {
         console.error(`Gemini API attempt ${i + 1} failed:`, error);
         
-        if (error.message?.includes('quota') || error.message?.includes('rate')) {
-          throw new Error(ERROR_MESSAGES.RATE_LIMIT_EXCEEDED);
+        // Handle rate limits with retry instead of immediate failure
+        if (error.message?.includes('quota') || error.message?.includes('rate') || error.message?.includes('Rate limit')) {
+          if (i === retries - 1) {
+            throw new Error(ERROR_MESSAGES.RATE_LIMIT_EXCEEDED);
+          }
+          console.log(`Rate limit hit, retrying in ${2000 * Math.pow(2, i)}ms...`);
+          // Longer wait for rate limits
+          await new Promise(resolve => setTimeout(resolve, 5000 * Math.pow(2, i)));
+          continue;
         }
         
         if (i === retries - 1) {
           throw new Error(error.message || ERROR_MESSAGES.GENERATION_FAILED);
         }
         
-        // Exponential backoff
+        // Exponential backoff for other errors
         await new Promise(resolve => setTimeout(resolve, 2000 * Math.pow(2, i)));
       }
     }
     throw new Error(ERROR_MESSAGES.GENERATION_FAILED);
   }
 
-  async generateJSON(prompt: string): Promise<any> {
+  async generateJSON(prompt: string, retries = 3): Promise<any> {
     const jsonPrompt = `${prompt}\n\nIMPORTANT: Return ONLY valid JSON with no markdown formatting, no backticks, no explanations. The JSON should be properly formatted and parseable.`;
-    const response = await this.generateContent(jsonPrompt);
     
-    try {
-      // Clean response of any potential formatting
-      const cleaned = response
-        .replace(/```json\n?/g, '')
-        .replace(/```\n?/g, '')
-        .replace(/^[^{]*/, '') // Remove any text before the first {
-        .replace(/[^}]*$/, '') // Remove any text after the last }
-        .trim();
-      
-      return JSON.parse(cleaned);
-    } catch (error) {
-      console.error('JSON parse error:', error);
-      console.error('Raw response:', response);
-      throw new Error('Failed to parse Gemini response as JSON');
+    for (let i = 0; i < retries; i++) {
+      try {
+        const response = await this.generateContent(jsonPrompt);
+        
+        // Clean response of any potential formatting
+        const cleaned = response
+          .replace(/```json\n?/g, '')
+          .replace(/```\n?/g, '')
+          .replace(/^[^{]*/, '') // Remove any text before the first {
+          .replace(/[^}]*$/, '') // Remove any text after the last }
+          .trim();
+        
+        return JSON.parse(cleaned);
+      } catch (error: any) {
+        console.error(`JSON generation attempt ${i + 1} failed:`, error);
+        
+        // If it's a rate limit, let the generateContent method handle retries
+        if (error.message?.includes('Rate limit') || error.message?.includes('quota')) {
+          if (i === retries - 1) {
+            throw error; // Re-throw rate limit errors
+          }
+          continue;
+        }
+        
+        // For JSON parsing errors, try again with a fresh request
+        if (i === retries - 1) {
+          console.error('JSON parse error after all retries:', error);
+          throw new Error('Failed to parse Gemini response as JSON');
+        }
+        
+        // Wait before retrying JSON parsing
+        await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+      }
     }
+    throw new Error('Failed to generate valid JSON after all retries');
   }
 
   async generateBatch(prompts: string[]): Promise<string[]> {
