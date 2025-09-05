@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { contentService } from '../../lib/services/content';
-import type { PromptEnhancementRequest, PromptEnhancementResponse } from '@/lib/types';
+import type { PromptEnhancementRequest, PromptEnhancementResponse } from '../../lib/types';
 
 export async function POST(request: NextRequest) {
   try {

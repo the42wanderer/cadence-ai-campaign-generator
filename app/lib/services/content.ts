@@ -38,7 +38,7 @@ export class ContentService {
     platform: string,
     contentType: 'image' | 'video' | 'text'
   ): Promise<string> {
-    const platformInfo = PLATFORMS[platform];
+    const platformInfo = PLATFORMS[platform as keyof typeof PLATFORMS];
     const currentMonth = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
     
     const prompt = `
@@ -74,7 +74,7 @@ export class ContentService {
     const posts: GeneratedContent[] = [];
 
     for (const platformId of platforms) {
-      const platform = PLATFORMS[platformId];
+      const platform = PLATFORMS[platformId as keyof typeof PLATFORMS];
       if (!platform) {
         console.error(`Unknown platform: ${platformId}`);
         continue;
@@ -89,14 +89,14 @@ export class ContentService {
         Platform limits:
         - Caption: ${platform.limits.captionLength} characters max
         - Hashtags: ${platform.limits.hashtagLimit} max
-        - Media ratio: ${platform.limits.imageRatio}
-        - Video length: ${platform.limits.videoLength} seconds max
+        - Media ratio: ${(platform.limits as any).imageRatio || "16:9"}
+        - Video length: ${(platform.limits as any).videoLength || 60} seconds max
         
         Generate a JSON object with:
         {
           "caption": "engaging caption with emojis, optimized for ${platform.name}",
           "hashtags": ["relevant", "trending", "hashtags", "for", "${platform.name}"],
-          "mediaPrompt": "detailed prompt for AI ${contentType} generation with ${platform.limits.imageRatio} aspect ratio",
+          "mediaPrompt": "detailed prompt for AI ${contentType} generation with ${(platform.limits as any).imageRatio || "16:9"} aspect ratio",
           "cta": "clear call-to-action",
           "hook": "attention-grabbing opening line"
         }
@@ -166,13 +166,13 @@ export class ContentService {
   ): Promise<CampaignStrategy> {
     const totalDays = CAMPAIGN_DURATIONS[duration as keyof typeof CAMPAIGN_DURATIONS] || 7;
     const frequencyDays = CAMPAIGN_FREQUENCIES[frequency as keyof typeof CAMPAIGN_FREQUENCIES] || 1;
-    const totalPosts = Math.ceil(totalDays / frequencyDays);
+    const totalPosts = Math.ceil(Number(totalDays) / Number(frequencyDays));
     
     const strategyPrompt = `
       Create a comprehensive social media campaign strategy.
       
       Campaign brief: ${prompt}
-      Platforms: ${platforms.map(p => PLATFORMS[p]?.name).join(', ')}
+      Platforms: ${platforms.map(p => PLATFORMS[p as keyof typeof PLATFORMS]?.name).join(', ')}
       Posting frequency: ${frequency} (every ${frequencyDays} days)
       Campaign duration: ${duration} (${totalDays} days)
       Total posts needed: ${totalPosts}
@@ -215,7 +215,7 @@ export class ContentService {
     const posts: GeneratedContent[] = [];
 
     for (const scheduleItem of strategy.schedule) {
-      const platform = PLATFORMS[scheduleItem.platform];
+      const platform = PLATFORMS[scheduleItem.platform as keyof typeof PLATFORMS];
       if (!platform) {
         console.error(`Unknown platform in schedule: ${scheduleItem.platform}`);
         continue;
@@ -236,7 +236,7 @@ export class ContentService {
         Platform limits:
         - Caption: ${platform.limits.captionLength} characters max
         - Hashtags: ${platform.limits.hashtagLimit} max
-        - Media ratio: ${platform.limits.imageRatio}
+        - Media ratio: ${(platform.limits as any).imageRatio || "16:9"}
         
         Generate JSON:
         {
@@ -287,7 +287,7 @@ export class ContentService {
   private async batchGenerateMedia(posts: GeneratedContent[]): Promise<void> {
     const mediaPromises = posts.map(async (post) => {
       if (post.type !== 'text' && post.mediaPrompt) {
-        const platform = PLATFORMS[post.platform];
+        const platform = PLATFORMS[post.platform as keyof typeof PLATFORMS];
         if (!platform) return;
         
         post.status = 'generating';
@@ -315,7 +315,7 @@ export class ContentService {
     originalContent: GeneratedContent,
     feedback: string
   ): Promise<GeneratedContent> {
-    const platform = PLATFORMS[originalContent.platform];
+    const platform = PLATFORMS[originalContent.platform as keyof typeof PLATFORMS];
     if (!platform) {
       throw new Error(`Unknown platform: ${originalContent.platform}`);
     }
@@ -415,7 +415,7 @@ export class ContentService {
     }
 
     if (request.platforms) {
-      const invalidPlatforms = request.platforms.filter((p: string) => !PLATFORMS[p]);
+      const invalidPlatforms = request.platforms.filter((p: string) => !PLATFORMS[p as keyof typeof PLATFORMS]);
       if (invalidPlatforms.length > 0) {
         errors.push(`Invalid platforms: ${invalidPlatforms.join(', ')}`);
       }
@@ -426,10 +426,10 @@ export class ContentService {
     }
 
     if (request.mode === 'campaign') {
-      if (!request.frequency || !CAMPAIGN_FREQUENCIES[request.frequency]) {
+      if (!request.frequency || !CAMPAIGN_FREQUENCIES[request.frequency as keyof typeof CAMPAIGN_FREQUENCIES]) {
         errors.push('Invalid campaign frequency');
       }
-      if (!request.duration || !CAMPAIGN_DURATIONS[request.duration]) {
+      if (!request.duration || !CAMPAIGN_DURATIONS[request.duration as keyof typeof CAMPAIGN_DURATIONS]) {
         errors.push('Invalid campaign duration');
       }
     }

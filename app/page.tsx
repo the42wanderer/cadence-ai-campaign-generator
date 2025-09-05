@@ -69,6 +69,8 @@ export default function SocialMediaTool() {
   });
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedContent, setGeneratedContent] = useState<any>(null);
+  const [isSliding, setIsSliding] = useState(false);
+  const [slideDirection, setSlideDirection] = useState<'left' | 'right'>('right');
 
   const handlePlatformToggle = (platformId: string) => {
     setSelectedPlatforms(prev => 
@@ -76,6 +78,23 @@ export default function SocialMediaTool() {
         ? prev.filter(p => p !== platformId)
         : [...prev, platformId]
     );
+  };
+
+  const handleModeChange = (newMode: 'single' | 'campaign') => {
+    if (newMode === mode) return;
+    
+    setIsSliding(true);
+    setSlideDirection(newMode === 'single' ? 'left' : 'right');
+    
+    // Quick mode change for toggle
+    setTimeout(() => {
+      setMode(newMode);
+    }, 100);
+    
+    // Content animation completes with balanced timing
+    setTimeout(() => {
+      setIsSliding(false);
+    }, 400);
   };
 
   const handleGenerate = async () => {
@@ -146,36 +165,19 @@ export default function SocialMediaTool() {
       <div className="max-w-4xl mx-auto px-6 py-12">
         {/* Mode Selection */}
         <div className="mb-12">
-          <div className="flex justify-center space-x-2 p-2 rounded-2xl" style={{ 
-            backgroundColor: 'var(--border-subtle)' 
-          }}>
+          <div className="mode-switch-container">
+            {/* Sliding Toggle Background */}
+            <div className={`mode-toggle-slider ${mode}`}></div>
+            
             <button
-              onClick={() => setMode('single')}
-              className={`px-8 py-4 rounded-xl font-semibold text-base transition-all duration-200 ${
-                mode === 'single' 
-                  ? 'shadow-lg' 
-                  : 'hover:opacity-80'
-              }`}
-              style={{ 
-                backgroundColor: mode === 'single' ? 'var(--accent-primary)' : 'transparent',
-                color: mode === 'single' ? 'var(--accent-text)' : 'var(--text-secondary)',
-                fontFamily: 'Geist Mono, monospace'
-              }}
+              onClick={() => handleModeChange('single')}
+              className={`mode-button ${mode === 'single' ? 'active' : ''}`}
             >
               Single Post
             </button>
             <button
-              onClick={() => setMode('campaign')}
-              className={`px-8 py-4 rounded-xl font-semibold text-base transition-all duration-200 ${
-                mode === 'campaign' 
-                  ? 'shadow-lg' 
-                  : 'hover:opacity-80'
-              }`}
-              style={{ 
-                backgroundColor: mode === 'campaign' ? 'var(--accent-primary)' : 'transparent',
-                color: mode === 'campaign' ? 'var(--accent-text)' : 'var(--text-secondary)',
-                fontFamily: 'Geist Mono, monospace'
-              }}
+              onClick={() => handleModeChange('campaign')}
+              className={`mode-button ${mode === 'campaign' ? 'active' : ''}`}
             >
               Full Campaign
             </button>
@@ -183,7 +185,7 @@ export default function SocialMediaTool() {
         </div>
 
         {/* Main Content - Centered Single Column */}
-        <div className="space-y-8">
+        <div className={`content-section space-y-8 ${isSliding ? `slide-out-${slideDirection}` : `slide-in-${slideDirection}`}`}>
           {/* Prompt Input */}
           <div className="card">
             <h2 className="text-2xl font-bold mb-6 text-center" style={{ 
@@ -305,12 +307,28 @@ export default function SocialMediaTool() {
                           color: contentType === type.value ? 'var(--accent-text)' : 'var(--text-primary)' 
                         }} 
                       />
-                      <div>
-                        <div className="font-semibold text-lg" style={{ 
-                          color: contentType === type.value ? 'var(--accent-text)' : 'var(--text-primary)', 
-                          fontFamily: 'Geist Mono, monospace' 
-                        }}>
-                          {type.label}
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-2">
+                          <div className="font-semibold text-lg" style={{ 
+                            color: contentType === type.value ? 'var(--accent-text)' : 'var(--text-primary)', 
+                            fontFamily: 'Geist Mono, monospace' 
+                          }}>
+                            {type.label}
+                          </div>
+                          {type.value === 'video' && (
+                            <span 
+                              className="px-2 py-1 rounded-full text-xs font-medium"
+                              style={{
+                                backgroundColor: '#FEF3C7',
+                                color: '#92400E',
+                                fontFamily: 'Geist Mono, monospace',
+                                fontSize: '0.75rem',
+                                fontWeight: '600'
+                              }}
+                            >
+                              BETA
+                            </span>
+                          )}
                         </div>
                         <div className="text-sm" style={{ 
                           color: contentType === type.value ? 'var(--accent-text)' : 'var(--text-secondary)',

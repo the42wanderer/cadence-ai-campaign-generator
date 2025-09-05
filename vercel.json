@@ -4,10 +4,6 @@
   "devCommand": "npm run dev",
   "installCommand": "npm install",
   "framework": "nextjs",
-  "env": {
-    "GEMINI_API_KEY": "@gemini_api_key",
-    "KIE_API_KEY": "@kie_api_key"
-  },
   "functions": {
     "app/api/**/*.ts": {
       "maxDuration": 300

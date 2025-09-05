@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { contentService } from '../../../lib/services/content';
-import type { GenerationRequest, GenerationResponse } from '@/lib/types';
+import type { GenerationRequest, GenerationResponse } from '../../../lib/types';
 
 export async function POST(request: NextRequest) {
   try {
