@@ -175,35 +175,52 @@ class GeminiAPI {
     };
   }
 
-  async generateImage(prompt: string, retries = 2): Promise<string> {
-    // For now, use a more sophisticated placeholder service that generates images based on prompts
-    // This is a temporary solution until we can get proper AI image generation working
-    
-    console.log('Image generation requested for prompt:', prompt);
-    
-    // Use a better placeholder service that generates images based on prompts
+  async generateImage(prompt: string): Promise<string> {
+    await this.rateLimit();
+
     try {
-      const searchTerm = prompt.toLowerCase()
-        .replace(/[^a-z0-9\s]/g, '') // Remove special characters
-        .replace(/\s+/g, ' ') // Normalize spaces
-        .trim()
-        .split(' ')
-        .slice(0, 2) // Take first 2 words
-        .join(',');
+      const imageModel = this.client.getGenerativeModel({ 
+        model: 'gemini-2.0-flash-preview-image-generation' 
+      });
+
+      const result = await imageModel.generateContent({
+        contents: [{
+          parts: [{
+            text: prompt
+          }]
+        }],
+        generationConfig: {
+          responseModalities: ["TEXT", "IMAGE"]
+        }
+      });
+
+      const response = await result.response;
       
-      // Use Lorem Picsum with a more specific seed based on the prompt
-      const seed = prompt.split('').reduce((a, b) => {
-        a = ((a << 5) - a) + b.charCodeAt(0);
-        return a & a;
-      }, 0);
+      // Check if response has images
+      if (response.candidates && response.candidates[0] && response.candidates[0].content.parts) {
+        const parts = response.candidates[0].content.parts;
+        for (const part of parts) {
+          if (part.inlineData && part.inlineData.mimeType.startsWith('image/')) {
+            // Return the base64 data URL
+            return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+          }
+        }
+      }
+
+      // Fallback to placeholder if no image generated
+      console.warn('No image generated, using placeholder');
+      return `https://picsum.photos/400/400?random=${Date.now()}`;
       
-      const picsumUrl = `https://picsum.photos/400/400?random=${Math.abs(seed)}`;
+    } catch (error: any) {
+      console.error('Image generation failed:', error);
       
-      console.log('Using Picsum placeholder for:', searchTerm, 'with seed:', Math.abs(seed));
-      return picsumUrl;
+      // Handle rate limit errors
+      if (error.message?.includes('429') || error.message?.includes('quota')) {
+        console.warn('Rate limit hit for image generation, using placeholder');
+        return `https://picsum.photos/400/400?random=${Date.now()}`;
+      }
       
-    } catch (error) {
-      console.error('Error generating placeholder image:', error);
+      // Return placeholder for any other error
       return `https://picsum.photos/400/400?random=${Date.now()}`;
     }
   }
