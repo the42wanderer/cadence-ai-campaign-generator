@@ -180,7 +180,7 @@ class GeminiAPI {
 
     try {
       const imageModel = this.client.getGenerativeModel({ 
-        model: 'gemini-2.0-flash-preview-image-generation' 
+        model: 'gemini-2.0-flash-exp' 
       });
 
       const result = await imageModel.generateContent({
@@ -196,16 +196,21 @@ class GeminiAPI {
 
       const response = await result.response;
       
+      console.log('Image generation response:', JSON.stringify(response, null, 2));
+      
       // Check if response has images
       if (response.candidates && response.candidates[0] && response.candidates[0].content.parts) {
         const parts = response.candidates[0].content.parts;
         for (const part of parts) {
           if (part.inlineData && part.inlineData.mimeType.startsWith('image/')) {
+            console.log('Image generated successfully!');
             // Return the base64 data URL
             return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
           }
         }
       }
+      
+      console.log('No image found in response, checking for text...');
 
       // Fallback to placeholder if no image generated
       console.warn('No image generated, using placeholder');
