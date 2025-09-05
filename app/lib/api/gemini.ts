@@ -181,21 +181,26 @@ class GeminiAPI {
     
     console.log('Image generation requested for prompt:', prompt);
     
-    // Use Unsplash API for better placeholder images based on the prompt
+    // Use a better placeholder service that generates images based on prompts
     try {
       const searchTerm = prompt.toLowerCase()
         .replace(/[^a-z0-9\s]/g, '') // Remove special characters
         .replace(/\s+/g, ' ') // Normalize spaces
         .trim()
         .split(' ')
-        .slice(0, 3) // Take first 3 words
-        .join(' ');
+        .slice(0, 2) // Take first 2 words
+        .join(',');
       
-      // Use Unsplash Source API for better placeholder images
-      const unsplashUrl = `https://source.unsplash.com/400x400/?${encodeURIComponent(searchTerm)}`;
+      // Use Lorem Picsum with a more specific seed based on the prompt
+      const seed = prompt.split('').reduce((a, b) => {
+        a = ((a << 5) - a) + b.charCodeAt(0);
+        return a & a;
+      }, 0);
       
-      console.log('Using Unsplash placeholder for:', searchTerm);
-      return unsplashUrl;
+      const picsumUrl = `https://picsum.photos/400/400?random=${Math.abs(seed)}`;
+      
+      console.log('Using Picsum placeholder for:', searchTerm, 'with seed:', Math.abs(seed));
+      return picsumUrl;
       
     } catch (error) {
       console.error('Error generating placeholder image:', error);
