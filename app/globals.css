@@ -12,8 +12,14 @@
   --text-placeholder: #888888;
   --border-subtle: #EAEAEA;
   --border-interactive: #AAAAAA;
+  
+  /* Default Accent Colors (Digital Mint) */
   --accent-primary: #79F2C3;
   --accent-text: #0A2B1D;
+  
+  /* Campaign Mode Accent Colors (Digital Mauve) */
+  --accent-primary-mauve: #E6A6DE;
+  --accent-text-mauve: #361A32;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -26,9 +32,72 @@
     --text-placeholder: #666666;
     --border-subtle: #2D2D2D;
     --border-interactive: #555555;
+    
+    /* Default Accent Colors (Digital Mint) - same in dark mode */
     --accent-primary: #79F2C3;
     --accent-text: #0A2B1D;
+    
+    /* Campaign Mode Accent Colors (Digital Mauve) - same in dark mode */
+    --accent-primary-mauve: #E6A6DE;
+    --accent-text-mauve: #361A32;
   }
+}
+
+/* Dynamic Accent Color Classes */
+.single-mode {
+  --accent-primary: #79F2C3;
+  --accent-text: #0A2B1D;
+}
+
+.campaign-mode {
+  --accent-primary: #E6A6DE;
+  --accent-text: #361A32;
+}
+
+/* Brutalist Gradient Header Effect */
+.header-gradient {
+  position: relative;
+  overflow: hidden;
+}
+
+.header-gradient::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(
+    ellipse 120% 100% at center top,
+    var(--accent-primary) 0%,
+    transparent 70%
+  );
+  opacity: 0.15;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.header-gradient::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    135deg,
+    transparent 0%,
+    var(--accent-primary) 20%,
+    transparent 40%
+  );
+  opacity: 0.08;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.header-content {
+  position: relative;
+  z-index: 2;
 }
 
 /* Base Typography */

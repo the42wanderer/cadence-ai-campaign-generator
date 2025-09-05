@@ -114,11 +114,11 @@ export default function SocialMediaTool() {
   };
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: 'var(--background)' }}>
+    <div className={`min-h-screen ${mode === 'single' ? 'single-mode' : 'campaign-mode'}`} style={{ backgroundColor: 'var(--background)' }}>
       {/* Header */}
-      <header className="border-b" style={{ borderColor: 'var(--border-subtle)' }}>
+      <header className="header-gradient border-b" style={{ borderColor: 'var(--border-subtle)' }}>
         <div className="max-w-4xl mx-auto px-6 py-16">
-          <div className="text-center">
+          <div className="header-content text-center">
             <h1 className="text-6xl font-bold mb-6" style={{ 
               color: 'var(--text-primary)',
               fontFamily: 'Geist, sans-serif',
