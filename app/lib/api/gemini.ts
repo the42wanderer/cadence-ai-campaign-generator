@@ -53,7 +53,7 @@ class GeminiAPI {
     this.dailyRequestCount++;
   }
 
-  async generateContent(prompt: string, retries = 3): Promise<string> {
+  async generateContent(prompt: string, retries = 2): Promise<string> {
     await this.rateLimit();
 
     for (let i = 0; i < retries; i++) {
@@ -69,9 +69,9 @@ class GeminiAPI {
           if (i === retries - 1) {
             throw new Error(ERROR_MESSAGES.RATE_LIMIT_EXCEEDED);
           }
-          console.log(`Rate limit hit, retrying in ${2000 * Math.pow(2, i)}ms...`);
-          // Longer wait for rate limits
-          await new Promise(resolve => setTimeout(resolve, 5000 * Math.pow(2, i)));
+          console.log(`Rate limit hit, retrying in ${3000 * (i + 1)}ms...`);
+          // Shorter wait for rate limits to avoid too many retries
+          await new Promise(resolve => setTimeout(resolve, 3000 * (i + 1)));
           continue;
         }
         
@@ -79,14 +79,14 @@ class GeminiAPI {
           throw new Error(error.message || ERROR_MESSAGES.GENERATION_FAILED);
         }
         
-        // Exponential backoff for other errors
-        await new Promise(resolve => setTimeout(resolve, 2000 * Math.pow(2, i)));
+        // Shorter backoff for other errors
+        await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
       }
     }
     throw new Error(ERROR_MESSAGES.GENERATION_FAILED);
   }
 
-  async generateJSON(prompt: string, retries = 3): Promise<any> {
+  async generateJSON(prompt: string, retries = 2): Promise<any> {
     const jsonPrompt = `${prompt}\n\nIMPORTANT: Return ONLY valid JSON with no markdown formatting, no backticks, no explanations. The JSON should be properly formatted and parseable.`;
     
     for (let i = 0; i < retries; i++) {
@@ -175,54 +175,73 @@ class GeminiAPI {
     };
   }
 
-  async generateImage(prompt: string): Promise<string> {
+  async generateImage(prompt: string, retries = 2): Promise<string> {
     await this.rateLimit();
 
-    try {
-      const imageModel = this.client.getGenerativeModel({ 
-        model: 'gemini-2.0-flash-preview-image-generation' 
-      });
+    for (let i = 0; i < retries; i++) {
+      try {
+        const imageModel = this.client.getGenerativeModel({ 
+          model: 'gemini-2.0-flash-preview-image-generation' 
+        });
 
-      const result = await imageModel.generateContent({
-        contents: [{
-          role: "user",
-          parts: [{
-            text: prompt
-          }]
-        }],
-        generationConfig: {
-        }
-      });
+        const result = await imageModel.generateContent({
+          contents: [{
+            role: "user",
+            parts: [{
+              text: prompt
+            }]
+          }],
+          generationConfig: {
+          }
+        });
 
-      const response = await result.response;
-      
-      // Check if response has images
-      if (response.candidates && response.candidates[0] && response.candidates[0].content.parts) {
-        const parts = response.candidates[0].content.parts;
-        for (const part of parts) {
-          if (part.inlineData && part.inlineData.mimeType.startsWith('image/')) {
-            // Return the base64 data URL
-            return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+        const response = await result.response;
+        
+        // Check if response has images
+        if (response.candidates && response.candidates[0] && response.candidates[0].content.parts) {
+          const parts = response.candidates[0].content.parts;
+          for (const part of parts) {
+            if (part.inlineData && part.inlineData.mimeType.startsWith('image/')) {
+              // Return the base64 data URL
+              return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+            }
           }
         }
-      }
 
-      // Fallback to placeholder if no image generated
-      console.warn('No image generated, using placeholder');
-      return `https://picsum.photos/400/400?random=${Date.now()}`;
-      
-    } catch (error: any) {
-      console.error('Image generation failed:', error);
-      
-      // Handle rate limit errors
-      if (error.message?.includes('429') || error.message?.includes('quota')) {
-        console.warn('Rate limit hit for image generation, using placeholder');
-        return `https://picsum.photos/400/400?random=${Date.now()}`;
+        // If no image in response, try again or fallback
+        if (i === retries - 1) {
+          console.warn('No image generated after all retries, using placeholder');
+          return `https://picsum.photos/400/400?random=${Date.now()}`;
+        }
+        
+        // Wait before retrying
+        await new Promise(resolve => setTimeout(resolve, 2000 * (i + 1)));
+        
+      } catch (error: any) {
+        console.error(`Image generation attempt ${i + 1} failed:`, error);
+        
+        // Handle rate limit errors
+        if (error.message?.includes('429') || error.message?.includes('quota') || error.message?.includes('rate')) {
+          if (i === retries - 1) {
+            console.warn('Rate limit hit for image generation after all retries, using placeholder');
+            return `https://picsum.photos/400/400?random=${Date.now()}`;
+          }
+          console.log(`Image generation rate limit hit, retrying in ${3000 * (i + 1)}ms...`);
+          await new Promise(resolve => setTimeout(resolve, 3000 * (i + 1)));
+          continue;
+        }
+        
+        if (i === retries - 1) {
+          console.error('Image generation failed after all retries:', error);
+          return `https://picsum.photos/400/400?random=${Date.now()}`;
+        }
+        
+        // Wait before retrying
+        await new Promise(resolve => setTimeout(resolve, 2000 * (i + 1)));
       }
-      
-      // Return placeholder for any other error
-      return `https://picsum.photos/400/400?random=${Date.now()}`;
     }
+    
+    return `https://picsum.photos/400/400?random=${Date.now()}`;
   }
 
   async generateVideo(prompt: string): Promise<string> {
