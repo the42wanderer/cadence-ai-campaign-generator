@@ -192,21 +192,27 @@ class GeminiAPI {
             }]
           }],
           generationConfig: {
+            responseModalities: ["TEXT", "IMAGE"]
           }
         });
 
         const response = await result.response;
+        
+        console.log('Image generation response:', JSON.stringify(response, null, 2));
         
         // Check if response has images
         if (response.candidates && response.candidates[0] && response.candidates[0].content.parts) {
           const parts = response.candidates[0].content.parts;
           for (const part of parts) {
             if (part.inlineData && part.inlineData.mimeType.startsWith('image/')) {
+              console.log('Image generated successfully');
               // Return the base64 data URL
               return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
             }
           }
         }
+        
+        console.log('No image found in response, checking for text response...');
 
         // If no image in response, try again or fallback
         if (i === retries - 1) {
