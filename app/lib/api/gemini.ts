@@ -180,15 +180,16 @@ class GeminiAPI {
 
     for (let i = 0; i < retries; i++) {
       try {
+        // Try using the regular Gemini model with image generation
         const imageModel = this.client.getGenerativeModel({ 
-          model: 'gemini-2.0-flash-preview-image-generation' 
+          model: 'gemini-2.0-flash-exp' 
         });
 
         const result = await imageModel.generateContent({
           contents: [{
             role: "user",
             parts: [{
-              text: prompt
+              text: `Generate an image: ${prompt}`
             }]
           }],
           generationConfig: {
