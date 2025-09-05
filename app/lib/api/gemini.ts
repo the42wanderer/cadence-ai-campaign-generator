@@ -185,13 +185,11 @@ class GeminiAPI {
 
       const result = await imageModel.generateContent({
         contents: [{
+          role: "user",
           parts: [{
             text: prompt
           }]
-        }],
-        generationConfig: {
-          responseModalities: ["TEXT", "IMAGE"]
-        }
+        }]
       });
 
       const response = await result.response;
