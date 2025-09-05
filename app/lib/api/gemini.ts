@@ -53,7 +53,7 @@ class GeminiAPI {
     this.dailyRequestCount++;
   }
 
-  async generateContent(prompt: string, retries = 2): Promise<string> {
+  async generateContent(prompt: string, retries = 1): Promise<string> {
     await this.rateLimit();
 
     for (let i = 0; i < retries; i++) {
@@ -69,9 +69,9 @@ class GeminiAPI {
           if (i === retries - 1) {
             throw new Error(ERROR_MESSAGES.RATE_LIMIT_EXCEEDED);
           }
-          console.log(`Rate limit hit, retrying in ${3000 * (i + 1)}ms...`);
-          // Shorter wait for rate limits to avoid too many retries
-          await new Promise(resolve => setTimeout(resolve, 3000 * (i + 1)));
+          console.log(`Rate limit hit, retrying in ${2000}ms...`);
+          // Single retry with short wait
+          await new Promise(resolve => setTimeout(resolve, 2000));
           continue;
         }
         
@@ -79,8 +79,8 @@ class GeminiAPI {
           throw new Error(error.message || ERROR_MESSAGES.GENERATION_FAILED);
         }
         
-        // Shorter backoff for other errors
-        await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+        // Single retry for other errors
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
     }
     throw new Error(ERROR_MESSAGES.GENERATION_FAILED);
@@ -176,79 +176,31 @@ class GeminiAPI {
   }
 
   async generateImage(prompt: string, retries = 2): Promise<string> {
-    await this.rateLimit();
-
-    for (let i = 0; i < retries; i++) {
-      try {
-        // Try using the regular Gemini model with image generation
-        const imageModel = this.client.getGenerativeModel({ 
-          model: 'gemini-2.0-flash-exp' 
-        });
-
-        const result = await imageModel.generateContent({
-          contents: [{
-            role: "user",
-            parts: [{
-              text: `Generate an image: ${prompt}`
-            }]
-          }],
-          generationConfig: {
-            responseModalities: ["TEXT", "IMAGE"]
-          }
-        });
-
-        const response = await result.response;
-        
-        console.log('Image generation response:', JSON.stringify(response, null, 2));
-        
-        // Check if response has images
-        if (response.candidates && response.candidates[0] && response.candidates[0].content.parts) {
-          const parts = response.candidates[0].content.parts;
-          for (const part of parts) {
-            if (part.inlineData && part.inlineData.mimeType.startsWith('image/')) {
-              console.log('Image generated successfully');
-              // Return the base64 data URL
-              return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-            }
-          }
-        }
-        
-        console.log('No image found in response, checking for text response...');
-
-        // If no image in response, try again or fallback
-        if (i === retries - 1) {
-          console.warn('No image generated after all retries, using placeholder');
-          return `https://picsum.photos/400/400?random=${Date.now()}`;
-        }
-        
-        // Wait before retrying
-        await new Promise(resolve => setTimeout(resolve, 2000 * (i + 1)));
-        
-      } catch (error: any) {
-        console.error(`Image generation attempt ${i + 1} failed:`, error);
-        
-        // Handle rate limit errors
-        if (error.message?.includes('429') || error.message?.includes('quota') || error.message?.includes('rate')) {
-          if (i === retries - 1) {
-            console.warn('Rate limit hit for image generation after all retries, using placeholder');
-            return `https://picsum.photos/400/400?random=${Date.now()}`;
-          }
-          console.log(`Image generation rate limit hit, retrying in ${3000 * (i + 1)}ms...`);
-          await new Promise(resolve => setTimeout(resolve, 3000 * (i + 1)));
-          continue;
-        }
-        
-        if (i === retries - 1) {
-          console.error('Image generation failed after all retries:', error);
-          return `https://picsum.photos/400/400?random=${Date.now()}`;
-        }
-        
-        // Wait before retrying
-        await new Promise(resolve => setTimeout(resolve, 2000 * (i + 1)));
-      }
-    }
+    // For now, use a more sophisticated placeholder service that generates images based on prompts
+    // This is a temporary solution until we can get proper AI image generation working
     
-    return `https://picsum.photos/400/400?random=${Date.now()}`;
+    console.log('Image generation requested for prompt:', prompt);
+    
+    // Use Unsplash API for better placeholder images based on the prompt
+    try {
+      const searchTerm = prompt.toLowerCase()
+        .replace(/[^a-z0-9\s]/g, '') // Remove special characters
+        .replace(/\s+/g, ' ') // Normalize spaces
+        .trim()
+        .split(' ')
+        .slice(0, 3) // Take first 3 words
+        .join(' ');
+      
+      // Use Unsplash Source API for better placeholder images
+      const unsplashUrl = `https://source.unsplash.com/400x400/?${encodeURIComponent(searchTerm)}`;
+      
+      console.log('Using Unsplash placeholder for:', searchTerm);
+      return unsplashUrl;
+      
+    } catch (error) {
+      console.error('Error generating placeholder image:', error);
+      return `https://picsum.photos/400/400?random=${Date.now()}`;
+    }
   }
 
   async generateVideo(prompt: string): Promise<string> {
