@@ -15,8 +15,16 @@ import {
   Sparkles,
   Calendar,
   Clock,
-  BarChart3
+  BarChart3,
+  RefreshCw,
+  ArrowRight,
+  CheckCircle,
+  FileDown,
+  FileText as FileTextIcon,
+  Image as ImageIcon
 } from 'lucide-react';
+import type { CampaignStep, CampaignStrategy } from './lib/types';
+import { downloadStrategyAsPDF, downloadStrategyAsMarkdown } from './lib/utils/download';
 
 // Platform data
 const PLATFORMS = {
@@ -71,6 +79,13 @@ export default function SocialMediaTool() {
   const [generatedContent, setGeneratedContent] = useState<any>(null);
   const [isSliding, setIsSliding] = useState(false);
   const [slideDirection, setSlideDirection] = useState<'left' | 'right'>('right');
+  
+  // Campaign step-by-step state
+  const [campaignStep, setCampaignStep] = useState<CampaignStep>('input');
+  const [campaignStrategy, setCampaignStrategy] = useState<CampaignStrategy | null>(null);
+  const [isGeneratingStrategy, setIsGeneratingStrategy] = useState(false);
+  const [isGeneratingPosts, setIsGeneratingPosts] = useState(false);
+  const [generatingImages, setGeneratingImages] = useState<Set<string>>(new Set());
 
   const handlePlatformToggle = (platformId: string) => {
     setSelectedPlatforms(prev => 
@@ -100,35 +115,193 @@ export default function SocialMediaTool() {
   const handleGenerate = async () => {
     if (!prompt.trim() || selectedPlatforms.length === 0) return;
 
+    if (mode === 'single') {
+      await handleSingleGeneration();
+    } else {
+      await handleCampaignStrategyGeneration();
+    }
+  };
+
+  const handleSingleGeneration = async () => {
     setIsGenerating(true);
     setGeneratedContent(null);
 
     try {
-      const endpoint = mode === 'single' ? '/api/generate/single' : '/api/generate/campaign';
-      const body = mode === 'single' 
-        ? { prompt, platforms: selectedPlatforms, contentType, enhancePrompt }
-        : { 
-            prompt, 
-            platforms: selectedPlatforms, 
-            contentType, 
-            enhancePrompt,
-            frequency: campaignSettings.frequency,
-            duration: campaignSettings.duration,
-            contentMix: campaignSettings.contentMix
-          };
-
-      const response = await fetch(endpoint, {
+      const response = await fetch('/api/generate/single', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+        body: JSON.stringify({ 
+          prompt, 
+          platforms: selectedPlatforms, 
+          contentType, 
+          enhancePrompt 
+        })
       });
 
       const data = await response.json();
       setGeneratedContent(data);
     } catch (error) {
-      console.error('Generation failed:', error);
+      console.error('Single generation failed:', error);
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleCampaignStrategyGeneration = async () => {
+    setIsGeneratingStrategy(true);
+    setCampaignStrategy(null);
+
+    try {
+      const response = await fetch('/api/generate/campaign/strategy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          prompt, 
+          platforms: selectedPlatforms, 
+          contentType, 
+          enhancePrompt,
+          frequency: campaignSettings.frequency,
+          duration: campaignSettings.duration,
+          contentMix: campaignSettings.contentMix
+        })
+      });
+
+      const data = await response.json();
+      if (data.success && data.strategy) {
+        setCampaignStrategy(data.strategy);
+        setCampaignStep('strategy');
+      } else {
+        console.error('Strategy generation failed:', data.error);
+      }
+    } catch (error) {
+      console.error('Strategy generation failed:', error);
+    } finally {
+      setIsGeneratingStrategy(false);
+    }
+  };
+
+  const handleContinueCampaign = async () => {
+    if (!campaignStrategy) return;
+
+    setIsGeneratingPosts(true);
+    setGeneratedContent(null);
+
+    try {
+      console.log('Starting posts generation with strategy:', campaignStrategy);
+      const response = await fetch('/api/generate/campaign/posts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          strategy: campaignStrategy, 
+          platforms: selectedPlatforms 
+        })
+      });
+
+      const data = await response.json();
+      console.log('Posts generation response:', data);
+      
+      if (data.success && data.posts) {
+        console.log('Setting generated content and updating step to posts');
+        setGeneratedContent({ ...data, strategy: campaignStrategy });
+        setCampaignStep('posts');
+      } else {
+        console.error('Posts generation failed:', data.error);
+      }
+    } catch (error) {
+      console.error('Posts generation failed:', error);
+    } finally {
+      setIsGeneratingPosts(false);
+    }
+  };
+
+  const handleRetryCampaign = () => {
+    setCampaignStep('input');
+    setCampaignStrategy(null);
+    setGeneratedContent(null);
+  };
+
+  const handleGenerateRealImage = async (postId: string, mediaPrompt: string) => {
+    if (!generatedContent?.posts) return;
+
+    setGeneratingImages(prev => new Set(prev).add(postId));
+
+    try {
+      // Add a small delay to prevent rate limiting
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      const response = await fetch('/api/generate/single', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          prompt: mediaPrompt, 
+          platforms: ['instagram'], 
+          contentType: 'image', 
+          enhancePrompt: false 
+        })
+      });
+
+      const data = await response.json();
+      
+      if (data.success && data.posts?.[0]?.mediaUrl) {
+        // Update the specific post with the real AI image
+        setGeneratedContent((prev: any) => ({
+          ...prev,
+          posts: prev.posts.map((post: any) => 
+            post.id === postId 
+              ? { ...post, mediaUrl: data.posts[0].mediaUrl, status: 'completed' }
+              : post
+          )
+        }));
+      } else {
+        throw new Error(data.error || 'Failed to generate image');
+      }
+    } catch (error) {
+      console.error('Real image generation failed:', error);
+      // Show a toast or update UI to indicate failure
+      alert('AI image generation failed. Please try again or use the placeholder image.');
+    } finally {
+      setGeneratingImages(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(postId);
+        return newSet;
+      });
+    }
+  };
+
+  const handleDownloadImage = (imageUrl: string, filename: string) => {
+    try {
+      // Create a temporary link element
+      const link = document.createElement('a');
+      link.href = imageUrl;
+      link.download = filename;
+      
+      // For base64 data URLs, we need to handle them differently
+      if (imageUrl.startsWith('data:')) {
+        // Convert base64 to blob
+        const byteString = atob(imageUrl.split(',')[1]);
+        const mimeString = imageUrl.split(',')[0].split(':')[1].split(';')[0];
+        const ab = new ArrayBuffer(byteString.length);
+        const ia = new Uint8Array(ab);
+        for (let i = 0; i < byteString.length; i++) {
+          ia[i] = byteString.charCodeAt(i);
+        }
+        const blob = new Blob([ab], { type: mimeString });
+        const blobUrl = URL.createObjectURL(blob);
+        
+        link.href = blobUrl;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(blobUrl);
+      } else {
+        // For regular URLs, just download directly
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+    } catch (error) {
+      console.error('Download failed:', error);
+      alert('Failed to download image. Please try right-clicking and saving the image.');
     }
   };
 
@@ -148,13 +321,13 @@ export default function SocialMediaTool() {
             </h1>
             <p className="text-xl mb-2" style={{ 
               color: 'var(--text-secondary)',
-              fontFamily: 'Geist Mono, monospace'
+              fontFamily: 'Geist, sans-serif'
             }}>
               AI-Powered Social Media Content Generator
             </p>
             <p className="text-base" style={{ 
               color: 'var(--text-secondary)',
-              fontFamily: 'Geist Mono, monospace'
+              fontFamily: 'Geist, sans-serif'
             }}>
               Powered by Gemini AI
             </p>
@@ -424,25 +597,212 @@ export default function SocialMediaTool() {
 
           {/* Generate Button */}
           <div className="text-center">
-            <button
-              onClick={handleGenerate}
-              disabled={!prompt.trim() || selectedPlatforms.length === 0 || isGenerating}
-              className="btn-primary text-lg px-12 py-4 disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{ fontFamily: 'Geist Mono, monospace' }}
-            >
-              {isGenerating ? (
-                <div className="flex items-center justify-center space-x-3">
-                  <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
-                  <span>Generating Content...</span>
+            {mode === 'single' || campaignStep === 'input' ? (
+              <button
+                onClick={handleGenerate}
+                disabled={!prompt.trim() || selectedPlatforms.length === 0 || isGenerating || isGeneratingStrategy}
+                className="btn-primary text-lg px-12 py-4 disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ fontFamily: 'Geist Mono, monospace' }}
+              >
+                {(isGenerating || isGeneratingStrategy) ? (
+                  <div className="flex items-center justify-center space-x-3">
+                    <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
+                    <span>{mode === 'single' ? 'Generating Content...' : 'Generating Strategy...'}</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center space-x-2">
+                    <Sparkles size={20} />
+                    <span>Generate {mode === 'single' ? 'Post' : 'Strategy'}</span>
+                  </div>
+                )}
+              </button>
+            ) : campaignStep === 'strategy' && campaignStrategy && (
+              <div className="space-y-4">
+                <div className="flex justify-center space-x-4">
+                  <button
+                    onClick={handleRetryCampaign}
+                    className="btn-secondary text-lg px-8 py-4"
+                    style={{ fontFamily: 'Geist Mono, monospace' }}
+                  >
+                    <div className="flex items-center justify-center space-x-2">
+                      <RefreshCw size={20} />
+                      <span>Retry Strategy</span>
+                    </div>
+                  </button>
+                  <button
+                    onClick={handleContinueCampaign}
+                    disabled={isGeneratingPosts}
+                    className="btn-primary text-lg px-8 py-4 disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{ fontFamily: 'Geist Mono, monospace' }}
+                  >
+                    {isGeneratingPosts ? (
+                      <div className="flex items-center justify-center space-x-3">
+                        <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
+                        <span>Generating Posts...</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center space-x-2">
+                        <ArrowRight size={20} />
+                        <span>Continue Campaign</span>
+                      </div>
+                    )}
+                  </button>
                 </div>
-              ) : (
-                <div className="flex items-center justify-center space-x-2">
-                  <Sparkles size={20} />
-                  <span>Generate {mode === 'single' ? 'Post' : 'Campaign'}</span>
-                </div>
-              )}
-            </button>
+              </div>
+            )}
           </div>
+
+          {/* Campaign Strategy Display */}
+          {mode === 'campaign' && campaignStep === 'strategy' && campaignStrategy && (
+            <div className="card">
+              <div className="text-center mb-6">
+                <div className="flex items-center justify-center space-x-2 mb-4">
+                  <CheckCircle size={24} style={{ color: 'var(--accent-primary)' }} />
+                  <h2 className="text-2xl font-bold" style={{ 
+                    color: 'var(--text-primary)',
+                    fontFamily: 'Geist, sans-serif',
+                    fontWeight: '700'
+                  }}>
+                    Campaign Strategy
+                  </h2>
+                </div>
+                <p className="text-base mb-4" style={{ 
+                  color: 'var(--text-secondary)',
+                  fontFamily: 'Geist Mono, monospace'
+                }}>
+                  Review your campaign strategy below. You can retry to generate a new strategy or continue to generate posts.
+                </p>
+                
+                {/* Download Buttons */}
+                <div className="flex justify-center space-x-3">
+                  <button
+                    onClick={() => downloadStrategyAsPDF(campaignStrategy, 'Campaign Strategy')}
+                    className="btn-secondary text-sm px-4 py-2 flex items-center space-x-2"
+                    style={{ fontFamily: 'Geist Mono, monospace' }}
+                  >
+                    <FileDown size={16} />
+                    <span>Download PDF</span>
+                  </button>
+                  <button
+                    onClick={() => downloadStrategyAsMarkdown(campaignStrategy, 'Campaign Strategy')}
+                    className="btn-secondary text-sm px-4 py-2 flex items-center space-x-2"
+                    style={{ fontFamily: 'Geist Mono, monospace' }}
+                  >
+                    <FileTextIcon size={16} />
+                    <span>Download MD</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-6">
+                {/* Overview */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-3" style={{ 
+                    color: 'var(--text-primary)',
+                    fontFamily: 'Geist Mono, monospace',
+                    fontWeight: '600'
+                  }}>
+                    Campaign Overview
+                  </h3>
+                  <p className="text-base leading-relaxed" style={{ 
+                    color: 'var(--text-secondary)',
+                    fontFamily: 'Geist, sans-serif'
+                  }}>
+                    {campaignStrategy.overview}
+                  </p>
+                </div>
+
+                {/* Content Pillars */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-3" style={{ 
+                    color: 'var(--text-primary)',
+                    fontFamily: 'Geist Mono, monospace',
+                    fontWeight: '600'
+                  }}>
+                    Content Pillars
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {campaignStrategy.contentPillars.map((pillar, index) => (
+                      <div key={index} className="p-3 rounded-lg" style={{ 
+                        backgroundColor: 'var(--background-secondary)',
+                        border: '1px solid var(--border-subtle)'
+                      }}>
+                        <p className="text-sm" style={{ 
+                          color: 'var(--text-primary)',
+                          fontFamily: 'Geist Mono, monospace'
+                        }}>
+                          {pillar}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Key Messages */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-3" style={{ 
+                    color: 'var(--text-primary)',
+                    fontFamily: 'Geist Mono, monospace',
+                    fontWeight: '600'
+                  }}>
+                    Key Messages
+                  </h3>
+                  <ul className="space-y-2">
+                    {campaignStrategy.keyMessages.map((message, index) => (
+                      <li key={index} className="flex items-start space-x-2">
+                        <div className="w-2 h-2 rounded-full mt-2 flex-shrink-0" style={{ backgroundColor: 'var(--accent-primary)' }}></div>
+                        <p className="text-sm" style={{ 
+                          color: 'var(--text-secondary)',
+                          fontFamily: 'Geist, sans-serif'
+                        }}>
+                          {message}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                {/* Visual Guidelines */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-3" style={{ 
+                    color: 'var(--text-primary)',
+                    fontFamily: 'Geist Mono, monospace',
+                    fontWeight: '600'
+                  }}>
+                    Visual Guidelines
+                  </h3>
+                  <p className="text-sm leading-relaxed" style={{ 
+                    color: 'var(--text-secondary)',
+                    fontFamily: 'Geist, sans-serif'
+                  }}>
+                    {campaignStrategy.visualGuidelines}
+                  </p>
+                </div>
+
+                {/* Hashtag Strategy */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-3" style={{ 
+                    color: 'var(--text-primary)',
+                    fontFamily: 'Geist Mono, monospace',
+                    fontWeight: '600'
+                  }}>
+                    Hashtag Strategy
+                  </h3>
+                  <div className="flex flex-wrap gap-2">
+                    {campaignStrategy.hashtagStrategy.map((hashtag, index) => (
+                      <span key={index} className="px-3 py-1 rounded-full text-sm font-medium" style={{ 
+                        backgroundColor: 'var(--accent-primary)',
+                        color: 'var(--accent-text)',
+                        fontFamily: 'Geist Mono, monospace'
+                      }}>
+                        #{hashtag}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Results */}
           {generatedContent && (
@@ -478,27 +838,107 @@ export default function SocialMediaTool() {
                       {post.mediaUrl && (
                         <div className="mb-6">
                           {post.type === 'image' ? (
-                            <img 
-                              src={post.mediaUrl} 
-                              alt="Generated content" 
-                              className="w-full h-auto rounded-xl border shadow-sm" 
-                              style={{ 
-                                borderColor: 'var(--border-subtle)', 
-                                maxHeight: '400px', 
-                                objectFit: 'cover' 
-                              }}
-                            />
-                          ) : (
-                            <video 
-                              src={post.mediaUrl} 
-                              controls 
-                              className="w-full h-auto rounded-xl border shadow-sm" 
-                              style={{ 
-                                borderColor: 'var(--border-subtle)', 
-                                maxHeight: '400px' 
-                              }}
-                            />
-                          )}
+                            post.mediaUrl === 'placeholder' ? (
+                              <div 
+                                className="w-full rounded-xl border shadow-sm flex items-center justify-center relative overflow-hidden"
+                                style={{ 
+                                  borderColor: 'var(--border-subtle)', 
+                                  height: '300px',
+                                  backgroundColor: 'var(--background-secondary)'
+                                }}
+                              >
+                                <div 
+                                  className="absolute inset-0 flex items-center justify-center"
+                                  style={{
+                                    background: `repeating-linear-gradient(
+                                      45deg,
+                                      transparent,
+                                      transparent 20px,
+                                      rgba(121, 242, 195, 0.03) 20px,
+                                      rgba(121, 242, 195, 0.03) 40px
+                                    )`
+                                  }}
+                                >
+                                  <div 
+                                    className="text-center"
+                                    style={{
+                                      fontFamily: 'Geist, sans-serif',
+                                      fontSize: '48px',
+                                      fontWeight: '900',
+                                      color: 'var(--accent-primary)',
+                                      opacity: '0.08',
+                                      letterSpacing: '0.1em',
+                                      lineHeight: '1',
+                                      transform: 'rotate(-15deg)'
+                                    }}
+                                  >
+                                    CADENCE<br/>CADENCE<br/>CADENCE
+                                  </div>
+                                </div>
+                              </div>
+                            ) : (
+                              <img 
+                                src={post.mediaUrl} 
+                                alt="Generated content" 
+                                className="w-full h-auto rounded-xl border shadow-sm" 
+                                style={{ 
+                                  borderColor: 'var(--border-subtle)', 
+                                  maxHeight: '400px', 
+                                  objectFit: 'cover' 
+                                }}
+                              />
+                            )
+                          ) : post.type === 'video' ? (
+                            post.mediaUrl === 'placeholder' ? (
+                              <div 
+                                className="w-full rounded-xl border shadow-sm flex items-center justify-center relative overflow-hidden"
+                                style={{ 
+                                  borderColor: 'var(--border-subtle)', 
+                                  height: '300px',
+                                  backgroundColor: 'var(--background-secondary)'
+                                }}
+                              >
+                                <div 
+                                  className="absolute inset-0 flex items-center justify-center"
+                                  style={{
+                                    background: `repeating-linear-gradient(
+                                      45deg,
+                                      transparent,
+                                      transparent 20px,
+                                      rgba(121, 242, 195, 0.03) 20px,
+                                      rgba(121, 242, 195, 0.03) 40px
+                                    )`
+                                  }}
+                                >
+                                  <div 
+                                    className="text-center"
+                                    style={{
+                                      fontFamily: 'Geist, sans-serif',
+                                      fontSize: '48px',
+                                      fontWeight: '900',
+                                      color: 'var(--accent-primary)',
+                                      opacity: '0.08',
+                                      letterSpacing: '0.1em',
+                                      lineHeight: '1',
+                                      transform: 'rotate(-15deg)'
+                                    }}
+                                  >
+                                    CADENCE<br/>CADENCE<br/>CADENCE
+                                  </div>
+                                </div>
+                              </div>
+                            ) : (
+                              <video 
+                                src={post.mediaUrl} 
+                                controls 
+                                className="w-full h-auto rounded-xl border shadow-sm" 
+                                style={{ 
+                                  borderColor: 'var(--border-subtle)', 
+                                  maxHeight: '400px' 
+                                }}
+                              />
+                            )
+                          ) : null}
                         </div>
                       )}
                       
@@ -535,14 +975,12 @@ export default function SocialMediaTool() {
                           <Copy size={16} />
                           <span>Copy Caption</span>
                         </button>
-                        {post.mediaUrl && (
+                        {post.mediaUrl && post.mediaUrl !== 'placeholder' && (
                           <button
-                            onClick={() => {
-                              const link = document.createElement('a');
-                              link.href = post.mediaUrl;
-                              link.download = `post-${index + 1}.${post.type === 'image' ? 'jpg' : 'mp4'}`;
-                              link.click();
-                            }}
+                            onClick={() => handleDownloadImage(
+                              post.mediaUrl, 
+                              `post-${index + 1}-${post.platform}.${post.type === 'image' ? 'jpg' : 'mp4'}`
+                            )}
                             className="btn-secondary text-sm px-6 py-3 flex items-center space-x-2"
                             style={{ fontFamily: 'Geist Mono, monospace' }}
                           >
@@ -664,26 +1102,156 @@ export default function SocialMediaTool() {
                           {post.mediaUrl && (
                             <div className="mb-4">
                               {post.type === 'image' ? (
-                                <img 
-                                  src={post.mediaUrl} 
-                                  alt="Generated content" 
-                                  className="w-full h-auto rounded-lg border shadow-sm" 
-                                  style={{ 
-                                    borderColor: 'var(--border-subtle)', 
-                                    maxHeight: '300px', 
-                                    objectFit: 'cover' 
-                                  }}
-                                />
+                                post.mediaUrl === 'placeholder' ? (
+                                  <div className="relative">
+                                    <div 
+                                      className="w-full rounded-lg border shadow-sm flex items-center justify-center relative overflow-hidden"
+                                      style={{ 
+                                        borderColor: 'var(--border-subtle)', 
+                                        height: '200px',
+                                        backgroundColor: 'var(--background-secondary)'
+                                      }}
+                                    >
+                                      <div 
+                                        className="absolute inset-0 flex items-center justify-center"
+                                        style={{
+                                          background: `repeating-linear-gradient(
+                                            45deg,
+                                            transparent,
+                                            transparent 15px,
+                                            rgba(121, 242, 195, 0.03) 15px,
+                                            rgba(121, 242, 195, 0.03) 30px
+                                          )`
+                                        }}
+                                      >
+                                        <div 
+                                          className="text-center"
+                                          style={{
+                                            fontFamily: 'Geist Mono, monospace',
+                                            fontSize: '32px',
+                                            fontWeight: '900',
+                                            color: 'var(--accent-primary)',
+                                            opacity: '0.08',
+                                            letterSpacing: '0.1em',
+                                            lineHeight: '1',
+                                            transform: 'rotate(-15deg)'
+                                          }}
+                                        >
+                                          CADENCE<br/>CADENCE<br/>CADENCE
+                                        </div>
+                                      </div>
+                                    </div>
+                                    {/* Generate Real Image Button */}
+                                    {post.mediaPrompt && (
+                                      <div className="absolute top-2 right-2">
+                                        <button
+                                          onClick={() => handleGenerateRealImage(post.id, post.mediaPrompt)}
+                                          disabled={generatingImages.has(post.id)}
+                                          className="btn-secondary text-xs px-3 py-2 flex items-center space-x-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                                          style={{ fontFamily: 'Geist Mono, monospace' }}
+                                        >
+                                          {generatingImages.has(post.id) ? (
+                                            <>
+                                              <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin"></div>
+                                              <span>Generating...</span>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <Sparkles size={12} />
+                                              <span>AI Image</span>
+                                            </>
+                                          )}
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <div className="relative">
+                                    <img 
+                                      src={post.mediaUrl} 
+                                      alt="Generated content" 
+                                      className="w-full h-auto rounded-lg border shadow-sm" 
+                                      style={{ 
+                                        borderColor: 'var(--border-subtle)', 
+                                        maxHeight: '300px', 
+                                        objectFit: 'cover' 
+                                      }}
+                                    />
+                                    {/* Generate Real Image Button */}
+                                    {post.mediaPrompt && (
+                                      <div className="absolute top-2 right-2">
+                                        <button
+                                          onClick={() => handleGenerateRealImage(post.id, post.mediaPrompt)}
+                                          disabled={generatingImages.has(post.id)}
+                                          className="btn-secondary text-xs px-3 py-2 flex items-center space-x-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                                          style={{ fontFamily: 'Geist Mono, monospace' }}
+                                        >
+                                          {generatingImages.has(post.id) ? (
+                                            <>
+                                              <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin"></div>
+                                              <span>Generating...</span>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <Sparkles size={12} />
+                                              <span>AI Image</span>
+                                            </>
+                                          )}
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                )
                               ) : post.type === 'video' ? (
-                                <video 
-                                  src={post.mediaUrl} 
-                                  controls 
-                                  className="w-full h-auto rounded-lg border shadow-sm" 
-                                  style={{ 
-                                    borderColor: 'var(--border-subtle)', 
-                                    maxHeight: '300px' 
-                                  }}
-                                />
+                                post.mediaUrl === 'placeholder' ? (
+                                  <div 
+                                    className="w-full rounded-lg border shadow-sm flex items-center justify-center relative overflow-hidden"
+                                    style={{ 
+                                      borderColor: 'var(--border-subtle)', 
+                                      height: '200px',
+                                      backgroundColor: 'var(--background-secondary)'
+                                    }}
+                                  >
+                                    <div 
+                                      className="absolute inset-0 flex items-center justify-center"
+                                      style={{
+                                        background: `repeating-linear-gradient(
+                                          45deg,
+                                          transparent,
+                                          transparent 15px,
+                                          rgba(121, 242, 195, 0.03) 15px,
+                                          rgba(121, 242, 195, 0.03) 30px
+                                        )`
+                                      }}
+                                    >
+                                      <div 
+                                        className="text-center"
+                                        style={{
+                                          fontFamily: 'Geist, sans-serif',
+                                          fontSize: '32px',
+                                          fontWeight: '900',
+                                          color: 'var(--accent-primary)',
+                                          opacity: '0.08',
+                                          letterSpacing: '0.1em',
+                                          lineHeight: '1',
+                                          transform: 'rotate(-15deg)'
+                                        }}
+                                      >
+                                        CADENCE<br/>CADENCE<br/>CADENCE
+                                      </div>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <video 
+                                    src={post.mediaUrl} 
+                                    controls 
+                                    className="w-full h-auto rounded-lg border shadow-sm" 
+                                    style={{ 
+                                      borderColor: 'var(--border-subtle)', 
+                                      maxHeight: '300px' 
+                                    }}
+                                  />
+                                )
                               ) : null}
                             </div>
                           )}
@@ -714,6 +1282,31 @@ export default function SocialMediaTool() {
                               </span>
                             )}
                           </div>
+                          
+                          {/* Action Buttons */}
+                          <div className="flex gap-2 mt-4">
+                            <button
+                              onClick={() => navigator.clipboard.writeText(post.caption)}
+                              className="btn-secondary text-xs px-3 py-2 flex items-center space-x-1"
+                              style={{ fontFamily: 'Geist Mono, monospace' }}
+                            >
+                              <Copy size={12} />
+                              <span>Copy</span>
+                            </button>
+                            {post.mediaUrl && post.mediaUrl !== 'placeholder' && (
+                              <button
+                                onClick={() => handleDownloadImage(
+                                  post.mediaUrl, 
+                                  `campaign-post-${post.dayNumber}-${post.platform}.${post.type === 'image' ? 'jpg' : 'mp4'}`
+                                )}
+                                className="btn-secondary text-xs px-3 py-2 flex items-center space-x-1"
+                                style={{ fontFamily: 'Geist Mono, monospace' }}
+                              >
+                                <Download size={12} />
+                                <span>Download</span>
+                              </button>
+                            )}
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -724,6 +1317,17 @@ export default function SocialMediaTool() {
           )}
         </div>
       </div>
+
+      {/* Footer Attribution */}
+      <footer className="mt-16 py-8 text-center border-t" style={{ borderColor: 'var(--border-subtle)' }}>
+        <p className="text-sm" style={{ 
+          color: 'var(--text-placeholder)',
+          fontFamily: 'Geist, sans-serif',
+          opacity: 0.6
+        }}>
+          Built for <span style={{ color: 'var(--accent-primary)' }}>Innovalte</span> | AI Organisational Design | Creative and Marketing Stream 2025
+        </p>
+      </footer>
     </div>
   );
 }

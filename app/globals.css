@@ -267,6 +267,23 @@ button, input, textarea, select, label {
   cursor: pointer;
 }
 
+.btn-secondary {
+  background-color: var(--background-secondary);
+  color: var(--text-primary);
+  border: 2px solid var(--border-interactive);
+  border-radius: 16px;
+  padding: 16px 24px;
+  font-weight: 600;
+  font-size: 16px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.btn-secondary:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
 .btn-primary:hover {
   transform: translateY(-1px);
   box-shadow: 0 8px 25px rgba(121, 242, 195, 0.3);

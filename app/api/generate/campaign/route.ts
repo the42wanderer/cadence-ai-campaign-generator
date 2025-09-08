@@ -24,41 +24,51 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Enhance prompt if requested
-    let finalPrompt = prompt;
-    if (enhancePrompt) {
-      try {
-        finalPrompt = await contentService.enhancePrompt(
-          prompt,
-          platforms[0],
-          contentMix === 'video-heavy' ? 'video' : 'image'
-        );
-      } catch (error) {
-        console.error('Prompt enhancement failed:', error);
-        // Continue with original prompt if enhancement fails
+    // Set a timeout for the entire campaign generation
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Campaign generation timeout')), 30000); // 30 second timeout
+    });
+
+    const campaignPromise = (async () => {
+      // Enhance prompt if requested
+      let finalPrompt = prompt;
+      if (enhancePrompt) {
+        try {
+          finalPrompt = await contentService.enhancePrompt(
+            prompt,
+            platforms[0],
+            contentMix === 'video-heavy' ? 'video' : 'image'
+          );
+        } catch (error) {
+          console.error('Prompt enhancement failed:', error);
+          // Continue with original prompt if enhancement fails
+        }
       }
-    }
 
-    // Generate campaign strategy
-    const strategy = await contentService.generateCampaignStrategy(
-      finalPrompt,
-      platforms,
-      frequency!,
-      duration!,
-      contentType
-    );
+      // Generate campaign strategy
+      const strategy = await contentService.generateCampaignStrategy(
+        finalPrompt,
+        platforms,
+        frequency!,
+        duration!,
+        contentType
+      );
 
-    // Generate campaign posts
-    const posts = await contentService.generateCampaignPosts(
-      strategy,
-      platforms
-    );
+      // Generate campaign posts
+      const posts = await contentService.generateCampaignPosts(
+        strategy,
+        platforms
+      );
+
+      return { strategy, posts, enhancedPrompt: enhancePrompt ? finalPrompt : undefined };
+    })();
+
+    // Race between campaign generation and timeout
+    const result = await Promise.race([campaignPromise, timeoutPromise]) as any;
 
     return NextResponse.json({ 
-      strategy, 
-      posts, 
-      success: true,
-      enhancedPrompt: enhancePrompt ? finalPrompt : undefined
+      ...result,
+      success: true
     } as GenerationResponse);
 
   } catch (error: any) {

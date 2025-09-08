@@ -110,6 +110,23 @@ export interface ContentAdjustmentResponse {
   error?: string;
 }
 
+export interface CampaignStrategyResponse {
+  success: boolean;
+  strategy?: CampaignStrategy;
+  enhancedPrompt?: string;
+  error?: string;
+  details?: string;
+}
+
+export interface CampaignPostsResponse {
+  success: boolean;
+  posts?: GeneratedContent[];
+  error?: string;
+  details?: string;
+}
+
+export type CampaignStep = 'input' | 'strategy' | 'posts' | 'complete';
+
 export interface WebhookPayload {
   taskId: string;
   status: 'completed' | 'failed';

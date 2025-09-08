@@ -3,9 +3,20 @@ import { contentService } from '../../../lib/services/content';
 import type { GenerationRequest, GenerationResponse } from '../../../lib/types';
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
+  console.log('🚀 [SINGLE POST] Request started at:', new Date().toISOString());
+  
   try {
     const body: GenerationRequest = await request.json();
     const { prompt, platforms, contentType, enhancePrompt } = body;
+    
+    console.log('📝 [SINGLE POST] Request details:', {
+      prompt: prompt.substring(0, 50) + '...',
+      platforms,
+      contentType,
+      enhancePrompt,
+      timestamp: new Date().toISOString()
+    });
 
     // Validate input
     const validation = contentService.validateRequest({
@@ -39,18 +50,40 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Generate content
-    const posts = await contentService.generateSinglePost(
-      finalPrompt,
-      platforms,
-      contentType
-    );
+    // Set a timeout for single post generation
+    const timeoutPromise = new Promise<GenerationResponse>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error('Single post generation timeout'));
+      }, 20000); // 20 second timeout
+    });
 
-    return NextResponse.json({ 
-      posts, 
-      success: true,
-      enhancedPrompt: enhancePrompt ? finalPrompt : undefined
-    } as GenerationResponse);
+    const postsPromise = (async () => {
+      // Generate content
+      const posts = await contentService.generateSinglePost(
+        finalPrompt,
+        platforms,
+        contentType
+      );
+
+      return { 
+        posts, 
+        success: true,
+        enhancedPrompt: enhancePrompt ? finalPrompt : undefined
+      } as GenerationResponse;
+    })();
+
+    // Race between generation and timeout
+    const result = await Promise.race([postsPromise, timeoutPromise]);
+    
+    const duration = Date.now() - startTime;
+    console.log('✅ [SINGLE POST] Request completed in:', duration + 'ms');
+    console.log('📊 [SINGLE POST] Result:', {
+      success: result.success,
+      postsCount: result.posts?.length || 0,
+      duration: duration + 'ms'
+    });
+
+    return NextResponse.json(result);
 
   } catch (error: any) {
     console.error('Single post generation error:', error);

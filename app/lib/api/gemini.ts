@@ -55,12 +55,16 @@ class GeminiAPI {
 
   async generateContent(prompt: string, retries = 1): Promise<string> {
     await this.rateLimit();
+    console.log('🤖 [GEMINI] Generating content, prompt length:', prompt.length);
 
     for (let i = 0; i < retries; i++) {
       try {
+        console.log(`🔄 [GEMINI] Attempt ${i + 1}/${retries}`);
         const result = await this.model.generateContent(prompt);
         const response = await result.response;
-        return response.text();
+        const text = response.text();
+        console.log('✅ [GEMINI] Content generated successfully, length:', text.length);
+        return text;
       } catch (error: any) {
         console.error(`Gemini API attempt ${i + 1} failed:`, error);
         
@@ -178,23 +182,27 @@ class GeminiAPI {
   async generateImage(prompt: string): Promise<string> {
     await this.rateLimit();
 
-    try {
-      const imageModel = this.client.getGenerativeModel({ 
-        model: 'gemini-2.0-flash-exp' 
-      });
+    // Add extra delay for image generation to avoid rate limits
+    await new Promise(resolve => setTimeout(resolve, 2000));
 
+    const imageModel = this.client.getGenerativeModel({ 
+      model: 'gemini-2.0-flash-preview-image-generation' 
+    });
+
+    try {
       const result = await imageModel.generateContent({
         contents: [{
           role: "user",
           parts: [{
             text: prompt
           }]
-        }]
+        }],
+        generationConfig: {
+          responseModalities: ["TEXT", "IMAGE"]
+        } as any
       });
 
       const response = await result.response;
-      
-      console.log('Image generation response:', JSON.stringify(response, null, 2));
       
       // Check if response has images
       if (response.candidates && response.candidates[0] && response.candidates[0].content.parts) {
@@ -207,24 +215,54 @@ class GeminiAPI {
           }
         }
       }
-      
-      console.log('No image found in response, checking for text...');
 
       // Fallback to placeholder if no image generated
       console.warn('No image generated, using placeholder');
-      return `https://picsum.photos/400/400?random=${Date.now()}`;
+      return 'placeholder';
       
     } catch (error: any) {
       console.error('Image generation failed:', error);
       
-      // Handle rate limit errors
-      if (error.message?.includes('429') || error.message?.includes('quota')) {
-        console.warn('Rate limit hit for image generation, using placeholder');
-        return `https://picsum.photos/400/400?random=${Date.now()}`;
+      // Handle rate limit errors with retry
+      if (error.message?.includes('429') || error.message?.includes('quota') || error.message?.includes('rate')) {
+        console.warn('Rate limit hit for image generation, waiting and retrying...');
+        // Wait 5 seconds and try once more
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        
+        try {
+          const retryResult = await imageModel.generateContent({
+            contents: [{
+              role: "user",
+              parts: [{
+                text: prompt
+              }]
+            }],
+            generationConfig: {
+              responseModalities: ["TEXT", "IMAGE"]
+            } as any
+          });
+
+          const retryResponse = await retryResult.response;
+          
+          if (retryResponse.candidates && retryResponse.candidates[0] && retryResponse.candidates[0].content.parts) {
+            const parts = retryResponse.candidates[0].content.parts;
+            for (const part of parts) {
+              if (part.inlineData && part.inlineData.mimeType.startsWith('image/')) {
+                console.log('Image generated on retry!');
+                return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+              }
+            }
+          }
+        } catch (retryError) {
+          console.error('Retry also failed:', retryError);
+        }
+        
+        // If retry also fails, use placeholder
+        return 'placeholder';
       }
       
       // Return placeholder for any other error
-      return `https://picsum.photos/400/400?random=${Date.now()}`;
+      return 'placeholder';
     }
   }
 
