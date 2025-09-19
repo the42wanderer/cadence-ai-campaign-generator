@@ -73,12 +73,12 @@ export async function POST(request: NextRequest) {
     // Race between strategy generation and timeout
     const result = await Promise.race([strategyPromise, timeoutPromise]) as any;
     
-    const duration = Date.now() - startTime;
-    console.log('✅ [CAMPAIGN STRATEGY] Request completed in:', duration + 'ms');
+    const executionTime = Date.now() - startTime;
+    console.log('✅ [CAMPAIGN STRATEGY] Request completed in:', executionTime + 'ms');
     console.log('📊 [CAMPAIGN STRATEGY] Result:', {
       success: result.success,
       hasStrategy: !!result.strategy,
-      duration: duration + 'ms'
+      duration: executionTime + 'ms'
     });
 
     return NextResponse.json({ 
