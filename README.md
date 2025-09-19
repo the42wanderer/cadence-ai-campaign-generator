@@ -1,3 +1,4 @@
+
 # 🚀 AI Social Media Campaign Generator
 
 A complete, production-ready web application that generates AI-powered social media campaigns using **Gemini 2.0 Flash** and **Kie.ai** APIs. Create single posts or full campaigns with intelligent prompt enhancement, media generation, and platform-specific optimization.
